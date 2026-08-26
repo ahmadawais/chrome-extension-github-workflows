@@ -113,6 +113,16 @@ async function init() {
     refresh();
   });
 
+  $("mark-all").addEventListener("click", async () => {
+    const resp = await sendAction("mark-all-files-viewed");
+    if (resp && resp.ok) {
+      setStatus(`Marked ${resp.marked} file(s) viewed.`, "ok");
+    } else {
+      setStatus((resp && resp.error) || "Failed to mark all files. Are you signed in?", "err");
+    }
+    refresh();
+  });
+
   $("copy-feed").addEventListener("click", async () => {
     const resp = await sendAction("copy-feed-entry");
     if (resp && resp.ok) {

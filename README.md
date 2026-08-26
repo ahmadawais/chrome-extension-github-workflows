@@ -18,6 +18,7 @@ GitHub lets you flip each changed file to **"Viewed"**, which collapses its diff
 - **View next file** — marks the top-most unviewed file as viewed (collapses it).
 - **Un-view last file** — un-views the most recently viewed file (the opposite of the above).
 - **Mark all test files viewed** — flips every test file to viewed in one click, leaving non-test files alone.
+- **Mark all files viewed** — flips every changed file to viewed in one click.
 
 #### In-page keyboard shortcuts (diff view only)
 
@@ -65,7 +66,8 @@ Click the **AA GitHub Workflows** toolbar icon to open the popup. It shows live 
 
 - **View next** / **Un-view last** — the two most common review actions.
 - **Files / Tests / Unviewed** counts — how many files changed, how many are test files, and how many of those are still unviewed.
-- **Mark all test files viewed** — bulk action for the test files.
+- **Mark all files viewed** — bulk action for every changed file.
+- **Mark all test files viewed** — bulk action for just the test files.
 - **Copy PR feed entry** — grab the chat feed entry.
 
 The popup styles itself to match GitHub's light or dark theme automatically.

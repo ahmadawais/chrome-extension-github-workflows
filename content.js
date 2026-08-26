@@ -191,16 +191,15 @@
     return { ok: false, error: "could not un-view last file" };
   }
 
-  async function markAllTestsViewed() {
-    // Repeatedly find and view the next unviewed test file until none remain.
-    // We re-query each pass so newly-mounted rows are seen.
+  // Loop that view every unviewed file matching an optional predicate, handling
+  // GitHub's virtualized list (re-query each pass + scroll into view).
+  async function viewAllMatching(predicate) {
     let count = 0;
-    for (let guard = 0; guard < 2000; guard++) {
+    for (let guard = 0; guard < 5000; guard++) {
       const entries = getAllFileEntries();
       let target = null;
       for (const e of entries) {
-        const p = getFilePath(e);
-        if (isTestPath(p) && isViewed(e) === false) { target = e; break; }
+        if (isViewed(e) === false && (!predicate || predicate(getFilePath(e)))) { target = e; break; }
       }
       if (!target) break;
       scrollEntryIntoView(target);
@@ -209,6 +208,14 @@
       await sleep(200);
     }
     return { ok: true, marked: count };
+  }
+
+  async function markAllTestsViewed() {
+    return viewAllMatching((path) => isTestPath(path));
+  }
+
+  async function markAllFilesViewed() {
+    return viewAllMatching(null); // every file
   }
 
   function countTestFiles() {
@@ -414,6 +421,9 @@
         return true; // async
       case "mark-all-tests-viewed":
         markAllTestsViewed().then(sendResponse);
+        return true; // async
+      case "mark-all-files-viewed":
+        markAllFilesViewed().then(sendResponse);
         return true; // async
       case "copy-feed-entry":
         copyFeedEntry().then(sendResponse);
