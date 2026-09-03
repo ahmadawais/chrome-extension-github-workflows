@@ -17,62 +17,55 @@
   const state = { mode: PR_DIFF_RE.test(window.location.href) };
 
   // ----- File entry discovery --------------------------------------------------
-  // GitHub's diff is a React app: each changed file is wrapped in a container
-  // whose class starts with "PullRequestDiffsList-module__diffEntry". Inside it
-  // is a "DiffFileHeader" carrying the filename (<h3>) and the "MarkAsViewed"
-  // button (aria-pressed / aria-label "Viewed"/"Not Viewed"). We also support
-  // the classic data-path layout.
-  function getEntryCandidates() {
-    const set = new Set();
-    // Modern React split view (virtualized): each file is a diffEntry block.
-    for (const el of document.querySelectorAll('[class*="PullRequestDiffsList-module__diffEntry"]')) {
-      set.add(el);
+  // GitHub's diff view: find all "Viewed" toggle buttons, then walk up to the
+  // file container and extract the filename. This avoids depending on GitHub's
+  // CSS module class names, which change every deploy.
+  function getAllViewedToggles() {
+    const toggles = [];
+    // GitHub's "Viewed" button: aria-label starts with "Viewed" or "Not viewed"
+    for (const b of document.querySelectorAll("button[aria-label]")) {
+      const la = (b.getAttribute("aria-label") || "").toLowerCase();
+      if (/^(viewed|not viewed)/i.test(la) || b.getAttribute("aria-pressed") !== null) {
+        toggles.push(b);
+      }
     }
-    for (const el of document.querySelectorAll('[class*="diffEntry"]')) {
-      set.add(el);
-    }
-    // Classic unified view: per-file headers with data-path.
-    for (const el of document.querySelectorAll(
-      '.js-file-header, .file-header, div[data-path]:not([data-path*="{{"])'
-    )) {
-      if (el.getAttribute && el.getAttribute("data-path")) set.add(el);
-    }
-    return [...set];
+    return toggles;
   }
 
-  function getFilePath(entry) {
-    const dp = entry.getAttribute && entry.getAttribute("data-path");
-    if (dp) return dp;
-    const h3 = entry.querySelector("h3, [class*='DiffFileHeader'] h3");
-    if (h3 && h3.textContent.trim()) return h3.textContent.trim();
-    const link = entry.querySelector('a[href*="/blob/"], a[href*="/tree/"]');
-    if (link && link.getAttribute("title")) return link.getAttribute("title");
-    if (link) {
-      const href = link.getAttribute("href") || "";
-      const m = href.match(/\/blob\/[^/]+\/(.+)$/) || href.match(/\/blob\/[^/]+(.+)$/);
-      if (m) return m[1];
-      if (link.textContent.trim()) return link.textContent.trim();
+  function getFilePathFromToggle(toggle) {
+    // Walk up to the file header/container. The filename is usually in an <a>
+    // with a title or href pointing at the blob, or in a data-path attribute.
+    let el = toggle;
+    for (let i = 0; i < 12 && el; i++) {
+      el = el.parentElement;
+      if (!el) break;
+      // data-path is the most reliable.
+      const dp = el.getAttribute && el.getAttribute("data-path");
+      if (dp) return dp;
+      // Look for a blob link with a title.
+      const link = el.querySelector('a[href*="/blob/"]');
+      if (link) {
+        const title = link.getAttribute("title");
+        if (title && title.includes("/")) return title;
+        const href = link.getAttribute("href") || "";
+        const m = href.match(/\/blob\/[^/]+\/(.+)$/);
+        if (m) return m[1];
+      }
     }
+    // Fallback: use any blob link on the page near this toggle.
+    const anyLink = toggle.closest('[data-path]');
+    if (anyLink) return anyLink.getAttribute("data-path");
     return null;
   }
 
-  // ----- Viewed toggle discovery ----------------------------------------------
+  function getAllFileEntries() {
+    return getAllViewedToggles().map((t) => ({ toggle: t, path: getFilePathFromToggle(t) }));
+  }
+
+  // Legacy alias — some functions expect entry objects with a "toggle" inside.
   function getViewedToggle(entry) {
-    const btns = entry.querySelectorAll("button[aria-label]");
-    for (const b of btns) {
-      const la = b.getAttribute("aria-label") || "";
-      if (/viewed/i.test(la) || (b.className || "").includes("MarkAsViewed")) return b;
-    }
-    const labeled = entry.querySelectorAll("button, [role='checkbox'], [role='switch'], label, .js-reviewed");
-    for (const el of labeled) {
-      const text = (el.textContent || "").trim().toLowerCase();
-      const la = (el.getAttribute("aria-label") || "").toLowerCase();
-      if (text === "viewed" || text === "not viewed" || /viewed/i.test(la) || el.getAttribute("aria-pressed") !== null) {
-        return el;
-      }
-    }
-    const cb = entry.querySelector('input[type="checkbox"].js-reviewed-toggle, input[type="checkbox"].js-viewed-file-toggle');
-    return cb || null;
+    if (entry && entry.toggle) return entry.toggle;
+    return entry;
   }
 
   function isViewed(entry) {
@@ -116,13 +109,6 @@
     return false;
   }
 
-  function getAllFileEntries() {
-    const candidates = getEntryCandidates().filter((e) => getFilePath(e));
-    // Drop any entry that is nested inside another entry (the broad selector may
-    // match both a diffEntry container and an inner header for the same file).
-    return candidates.filter((e) => !candidates.some((other) => other !== e && other.contains(e)));
-  }
-
   // ----- Test file detection ---------------------------------------------------
   // Covers *.test.*, *.spec.*, *_test.*, *_spec.*, *-test.*, *-spec.* and
   // __tests__ / __test__ / __specs__ directories (Vitest/Jest style).
@@ -143,10 +129,11 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function scrollEntryIntoView(entry) {
+    const el = entry.toggle || entry;
     try {
-      entry.scrollIntoView({ block: "center", behavior: "instant" });
+      el.scrollIntoView({ block: "center", behavior: "instant" });
     } catch (e) {
-      try { entry.scrollIntoView(); } catch (_) {}
+      try { el.scrollIntoView(); } catch (_) {}
     }
   }
 
@@ -168,7 +155,7 @@
       await sleep(120); // let GitHub mount the row + hydrate its state
       if (isViewed(target) === false && setViewed(target, true)) {
         await sleep(250); // let the collapse re-render settle
-        return { ok: true, file: getFilePath(target) };
+        return { ok: true, file: target.path };
       }
     }
     return { ok: false, error: "could not view next file" };
@@ -186,7 +173,7 @@
       await sleep(120);
       if (isViewed(target) === true && setViewed(target, false)) {
         await sleep(250);
-        return { ok: true, file: getFilePath(target) };
+        return { ok: true, file: target.path };
       }
     }
     return { ok: false, error: "could not un-view last file" };
@@ -200,7 +187,7 @@
       const entries = getAllFileEntries();
       let target = null;
       for (const e of entries) {
-        if (isViewed(e) === false && (!predicate || predicate(getFilePath(e)))) { target = e; break; }
+        if (isViewed(e) === false && (!predicate || predicate(e.path))) { target = e; break; }
       }
       if (!target) break;
       scrollEntryIntoView(target);
@@ -223,7 +210,7 @@
     const entries = getAllFileEntries();
     let total = 0, unviewed = 0;
     for (const e of entries) {
-      if (isTestPath(getFilePath(e))) {
+      if (isTestPath(e.path)) {
         total++;
         if (isViewed(e) === false) unviewed++;
       }
@@ -441,37 +428,6 @@
         return false;
     }
   });
-
-  // ----- SPA navigation: re-evaluate on GitHub client-side tab switches ---
-  // GitHub swaps PR tabs (conversation ⇄ files ⇄ changes) without a full page
-  // load, so the content script never re-runs. Watch the URL and re-apply
-  // review mode + auto-mark whenever it transitions onto a diff page.
-  let lastUrl = window.location.href;
-
-  function onUrlChange() {
-    const url = window.location.href;
-    if (url === lastUrl) return;
-    lastUrl = url;
-    const isDiff = PR_DIFF_RE.test(url);
-    // Sync review mode to the new page (auto-ON on diff pages, OFF elsewhere).
-    if (state.mode !== isDiff) setMode(isDiff);
-    if (isDiff) autoMarkTestsViewed();
-  }
-
-  // GitHub drives navigation through the History API.
-  const _pushState = history.pushState;
-  history.pushState = function (...args) {
-    _pushState.apply(this, args);
-    onUrlChange();
-  };
-  const _replaceState = history.replaceState;
-  history.replaceState = function (...args) {
-    _replaceState.apply(this, args);
-    onUrlChange();
-  };
-  window.addEventListener("popstate", onUrlChange);
-  // Safety net: poll for title/URL changes GitHub may not route through history.
-  setInterval(onUrlChange, 1000);
 
   // ----- Auto-mark test files viewed on PR diff pages -----------------------
   // GitHub virtualizes the diff list and hydrates rows on a timer, so we retry
