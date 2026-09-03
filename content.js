@@ -17,52 +17,33 @@
   const state = { mode: PR_DIFF_RE.test(window.location.href) };
 
   // ----- File entry discovery --------------------------------------------------
-  // GitHub's diff view: find all "Viewed" toggle buttons, then walk up to the
-  // file container and extract the filename. This avoids depending on GitHub's
-  // CSS module class names, which change every deploy.
-  function getAllViewedToggles() {
-    const toggles = [];
-    // GitHub's "Viewed" button: aria-label starts with "Viewed" or "Not viewed"
-    for (const b of document.querySelectorAll("button[aria-label]")) {
-      const la = (b.getAttribute("aria-label") || "").toLowerCase();
-      if (/^(viewed|not viewed)/i.test(la) || b.getAttribute("aria-pressed") !== null) {
-        toggles.push(b);
-      }
+  // GitHub's diff view: each file is wrapped in a container with a data-path
+  // attribute holding the filename. Inside each container is a "Viewed" toggle
+  // button (aria-label "Viewed" / "Not viewed", or aria-pressed).
+  function getAllFileEntries() {
+    const entries = [];
+    // Find every element that declares a file path.
+    for (const container of document.querySelectorAll("[data-path]")) {
+      const path = container.getAttribute("data-path");
+      if (!path) continue;
+      // Find the Viewed toggle inside this container.
+      const toggle = findViewedToggleIn(container);
+      if (toggle) entries.push({ toggle, path });
     }
-    return toggles;
+    return entries;
   }
 
-  function getFilePathFromToggle(toggle) {
-    // Walk up to the file header/container. The filename is usually in an <a>
-    // with a title or href pointing at the blob, or in a data-path attribute.
-    let el = toggle;
-    for (let i = 0; i < 12 && el; i++) {
-      el = el.parentElement;
-      if (!el) break;
-      // data-path is the most reliable.
-      const dp = el.getAttribute && el.getAttribute("data-path");
-      if (dp) return dp;
-      // Look for a blob link with a title.
-      const link = el.querySelector('a[href*="/blob/"]');
-      if (link) {
-        const title = link.getAttribute("title");
-        if (title && title.includes("/")) return title;
-        const href = link.getAttribute("href") || "";
-        const m = href.match(/\/blob\/[^/]+\/(.+)$/);
-        if (m) return m[1];
-      }
+  function findViewedToggleIn(container) {
+    for (const b of container.querySelectorAll("button[aria-label]")) {
+      const la = (b.getAttribute("aria-label") || "").toLowerCase();
+      if (/^(viewed|not viewed)/i.test(la)) return b;
     }
-    // Fallback: use any blob link on the page near this toggle.
-    const anyLink = toggle.closest('[data-path]');
-    if (anyLink) return anyLink.getAttribute("data-path");
+    for (const b of container.querySelectorAll("button")) {
+      if (b.getAttribute("aria-pressed") !== null) return b;
+    }
     return null;
   }
 
-  function getAllFileEntries() {
-    return getAllViewedToggles().map((t) => ({ toggle: t, path: getFilePathFromToggle(t) }));
-  }
-
-  // Legacy alias — some functions expect entry objects with a "toggle" inside.
   function getViewedToggle(entry) {
     if (entry && entry.toggle) return entry.toggle;
     return entry;
