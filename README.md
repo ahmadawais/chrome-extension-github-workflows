@@ -5,7 +5,7 @@ A Chrome extension that makes reviewing GitHub Pull Requests faster. It combines
 1. **PR diff review** — quickly mark files as viewed so they collapse, one by one or in bulk.
 2. **PR feed entry** — copy a formatted Slack/chat feed entry for any PR to your clipboard.
 
-Everything is driven from a clickable popup, plus two in-page keyboard shortcuts (V / Shift+V) while you're on the PR diff.
+Everything is driven from a clickable popup, plus two in-page keyboard shortcuts (V / Shift+V) while you're on the PR diff. On diff pages (`/files` or `/changes`), **review mode turns on automatically** and **all test files are marked as viewed on page load** — so you can just open a PR's changes and start reviewing.
 
 ---
 
@@ -15,6 +15,7 @@ Everything is driven from a clickable popup, plus two in-page keyboard shortcuts
 
 GitHub lets you flip each changed file to **"Viewed"**, which collapses its diff. That's the "I've already looked at this" marker. AA GitHub Workflows does it for you:
 
+- **Auto on diff pages** — when you open or refresh a PR's `/files` or `/changes` tab, review mode enables itself and all test files are marked viewed automatically.
 - **View next file** — marks the top-most unviewed file as viewed (collapses it).
 - **Un-view last file** — un-views the most recently viewed file (the opposite of the above).
 - **Mark all test files viewed** — flips every test file to viewed in one click, leaving non-test files alone.
@@ -28,6 +29,8 @@ While you're on the PR diff page (`/files` or `/changes`), the extension listens
 | --- | ------ |
 | `V` | Mark the next unviewed file as viewed |
 | `Shift` + `V` | Un-view the last viewed file |
+
+Review mode is **auto-enabled** on diff pages, so V / ⇧V work immediately. On other PR tabs (conversation, commits), mode stays off so you can type freely. You can also toggle it manually from the popup.
 
 These are intentionally **not** global shortcuts — they only fire while you're on the PR diff page and not typing in an input. No ⌘/Ctrl modifier is needed.
 
@@ -112,7 +115,7 @@ The extension supports both GitHub diff layouts:
 
 ## Troubleshooting
 
-- **V / Shift+V don't do anything** — make sure you're on the PR diff page (`/files` or `/changes`) and not typing in a search box. The keys only work on the diff page.
+- **V / Shift+V don't do anything** — review mode may be off. It auto-enables on `/files` and `/changes` pages; on other PR tabs it stays off. You can toggle it manually from the popup, or refresh the diff page to trigger auto-enable. Make sure you're not typing in a search box.
 - **"Are you signed in?"** — GitHub only shows the per-file "Viewed" toggle when you're signed in. Sign in to GitHub for the view/un-view actions to work.
 - **No file counts** — the popup needs the content script; it auto-injects on the active tab. Reload the PR page if counts stay at `–`.
 
