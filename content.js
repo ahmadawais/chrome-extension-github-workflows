@@ -10,10 +10,11 @@
   if (window.__AA_GITHUB_WORKFLOWS_LOADED__) return;
   window.__AA_GITHUB_WORKFLOWS_LOADED__ = true;
 
-  // Review mode must be manually toggled ON/OFF. While OFF, the V / Shift+V
-  // keys do nothing — you can type freely (e.g. "view" in a comment) without
-  // accidentally collapsing files.
-  const state = { mode: false };
+  // Review mode auto-enables on PR diff/changes pages. While OFF (or on other
+  // PR tabs), the V / Shift+V keys do nothing — you can type freely (e.g. "view"
+  // in a comment) without accidentally collapsing files.
+  const PR_DIFF_RE = /github\.com\/[^/]+\/[^/]+\/pull\/\d+\/(files|changes)\/?$/;
+  const state = { mode: PR_DIFF_RE.test(window.location.href) };
 
   // ----- File entry discovery --------------------------------------------------
   // GitHub's diff is a React app: each changed file is wrapped in a container
@@ -333,8 +334,6 @@
   }
 
   // ----- In-page keys: V / Shift+V (only while review mode is ON) --------------
-  const PR_DIFF_RE = /github\.com\/[^/]+\/[^/]+\/pull\/\d+\/(files|changes)\/?$/;
-
   let badgeEl = null;
   function ensureBadge() {
     if (!badgeEl) {
@@ -345,7 +344,7 @@
         "border-radius:999px;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;" +
         "color:#fff;background:#238636;box-shadow:0 2px 8px rgba(0,0,0,.4);" +
         "display:none;align-items:center;gap:6px;pointer-events:none;";
-      badgeEl.textContent = "● Review mode ON — V view next · ⇧V un-view";
+      badgeEl.textContent = "● Review mode — V view next · ⇧V un-view";
       document.documentElement.appendChild(badgeEl);
     }
     badgeEl.style.display = state.mode ? "flex" : "none";
@@ -383,6 +382,9 @@
   }
 
   document.addEventListener("keydown", onKeyDown, true);
+
+  // Show the badge immediately if review mode is auto-enabled on this page.
+  ensureBadge();
 
   // ----- Feed copy shortcut: Cmd+Shift+F (any PR page) -------------------------
   // Matches chrome-feed. Works regardless of review mode and even while typing.
@@ -439,6 +441,34 @@
         return false;
     }
   });
+
+  // ----- Auto-mark test files viewed on PR diff pages -----------------------
+  // GitHub virtualizes the diff list and hydrates rows on a timer, so we retry
+  // in short bursts until there are no more unviewed test files or we time out.
+  async function autoMarkTestsViewed() {
+    if (!PR_DIFF_RE.test(window.location.href)) return;
+    // Give GitHub a moment to mount the initial diff rows.
+    await sleep(800);
+    let totalMarked = 0;
+    const deadline = Date.now() + 30000; // 30s cap
+    while (Date.now() < deadline) {
+      const before = countTestFiles().unviewed;
+      if (before === 0) break;
+      const r = await markAllTestsViewed();
+      if (!r.ok) break;
+      totalMarked += r.marked;
+      // If nothing changed this pass, the list is done (or stalled).
+      const after = countTestFiles().unviewed;
+      if (after === before) break;
+      await sleep(400);
+    }
+    if (totalMarked > 0) {
+      showToast(`Auto-marked ${totalMarked} test file(s) viewed`);
+    }
+  }
+
+  // Kick off auto-marking. Runs in the background; the user can still press V.
+  autoMarkTestsViewed();
 
   console.log("[AA GitHub Workflows] content script injected");
 })();
