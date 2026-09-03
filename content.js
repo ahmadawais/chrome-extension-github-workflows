@@ -440,5 +440,36 @@
     }
   });
 
+  // ----- SPA navigation: re-evaluate on GitHub client-side tab switches ---
+  // GitHub swaps PR tabs (conversation ⇄ files ⇄ changes) without a full page
+  // load, so the content script never re-runs. Watch the URL and re-apply
+  // review mode + auto-mark whenever it transitions onto a diff page.
+  let lastUrl = window.location.href;
+
+  function onUrlChange() {
+    const url = window.location.href;
+    if (url === lastUrl) return;
+    lastUrl = url;
+    const isDiff = PR_DIFF_RE.test(url);
+    // Sync review mode to the new page (auto-ON on diff pages, OFF elsewhere).
+    if (state.mode !== isDiff) setMode(isDiff);
+    if (isDiff) autoMarkTestsViewed();
+  }
+
+  // GitHub drives navigation through the History API.
+  const _pushState = history.pushState;
+  history.pushState = function (...args) {
+    _pushState.apply(this, args);
+    onUrlChange();
+  };
+  const _replaceState = history.replaceState;
+  history.replaceState = function (...args) {
+    _replaceState.apply(this, args);
+    onUrlChange();
+  };
+  window.addEventListener("popstate", onUrlChange);
+  // Safety net: poll for title/URL changes GitHub may not route through history.
+  setInterval(onUrlChange, 1000);
+
   console.log("[AA GitHub Workflows] content script injected");
 })();
