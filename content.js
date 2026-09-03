@@ -17,36 +17,62 @@
   const state = { mode: PR_DIFF_RE.test(window.location.href) };
 
   // ----- File entry discovery --------------------------------------------------
-  // GitHub's diff view: each file is wrapped in a container with a data-path
-  // attribute holding the filename. Inside each container is a "Viewed" toggle
-  // button (aria-label "Viewed" / "Not viewed", or aria-pressed).
-  function getAllFileEntries() {
-    const entries = [];
-    // Find every element that declares a file path.
-    for (const container of document.querySelectorAll("[data-path]")) {
-      const path = container.getAttribute("data-path");
-      if (!path) continue;
-      // Find the Viewed toggle inside this container.
-      const toggle = findViewedToggleIn(container);
-      if (toggle) entries.push({ toggle, path });
+  // GitHub's diff is a React app: each changed file is wrapped in a container
+  // whose class starts with "PullRequestDiffsList-module__diffEntry". Inside it
+  // is a "DiffFileHeader" carrying the filename (<h3>) and the "MarkAsViewed"
+  // button (aria-pressed / aria-label "Viewed"/"Not Viewed"). We also support
+  // the classic data-path layout.
+  function getEntryCandidates() {
+    const set = new Set();
+    // Modern React split view (virtualized): each file is a diffEntry block.
+    for (const el of document.querySelectorAll('[class*="PullRequestDiffsList-module__diffEntry"]')) {
+      set.add(el);
     }
-    return entries;
+    for (const el of document.querySelectorAll('[class*="diffEntry"]')) {
+      set.add(el);
+    }
+    // Classic unified view: per-file headers with data-path.
+    for (const el of document.querySelectorAll(
+      '.js-file-header, .file-header, div[data-path]:not([data-path*="{{"])'
+    )) {
+      if (el.getAttribute && el.getAttribute("data-path")) set.add(el);
+    }
+    return [...set];
   }
 
-  function findViewedToggleIn(container) {
-    for (const b of container.querySelectorAll("button[aria-label]")) {
-      const la = (b.getAttribute("aria-label") || "").toLowerCase();
-      if (/^(viewed|not viewed)/i.test(la)) return b;
-    }
-    for (const b of container.querySelectorAll("button")) {
-      if (b.getAttribute("aria-pressed") !== null) return b;
+  function getFilePath(entry) {
+    const dp = entry.getAttribute && entry.getAttribute("data-path");
+    if (dp) return dp;
+    const h3 = entry.querySelector("h3, [class*='DiffFileHeader'] h3");
+    if (h3 && h3.textContent.trim()) return h3.textContent.trim();
+    const link = entry.querySelector('a[href*="/blob/"], a[href*="/tree/"]');
+    if (link && link.getAttribute("title")) return link.getAttribute("title");
+    if (link) {
+      const href = link.getAttribute("href") || "";
+      const m = href.match(/\/blob\/[^/]+\/(.+)$/) || href.match(/\/blob\/[^/]+(.+)$/);
+      if (m) return m[1];
+      if (link.textContent.trim()) return link.textContent.trim();
     }
     return null;
   }
 
+  // ----- Viewed toggle discovery ----------------------------------------------
   function getViewedToggle(entry) {
-    if (entry && entry.toggle) return entry.toggle;
-    return entry;
+    const btns = entry.querySelectorAll("button[aria-label]");
+    for (const b of btns) {
+      const la = b.getAttribute("aria-label") || "";
+      if (/viewed/i.test(la) || (b.className || "").includes("MarkAsViewed")) return b;
+    }
+    const labeled = entry.querySelectorAll("button, [role='checkbox'], [role='switch'], label, .js-reviewed");
+    for (const el of labeled) {
+      const text = (el.textContent || "").trim().toLowerCase();
+      const la = (el.getAttribute("aria-label") || "").toLowerCase();
+      if (text === "viewed" || text === "not viewed" || /viewed/i.test(la) || el.getAttribute("aria-pressed") !== null) {
+        return el;
+      }
+    }
+    const cb = entry.querySelector('input[type="checkbox"].js-reviewed-toggle, input[type="checkbox"].js-viewed-file-toggle');
+    return cb || null;
   }
 
   function isViewed(entry) {
@@ -90,6 +116,13 @@
     return false;
   }
 
+  function getAllFileEntries() {
+    const candidates = getEntryCandidates().filter((e) => getFilePath(e));
+    // Drop any entry that is nested inside another entry (the broad selector may
+    // match both a diffEntry container and an inner header for the same file).
+    return candidates.filter((e) => !candidates.some((other) => other !== e && other.contains(e)));
+  }
+
   // ----- Test file detection ---------------------------------------------------
   // Covers *.test.*, *.spec.*, *_test.*, *_spec.*, *-test.*, *-spec.* and
   // __tests__ / __test__ / __specs__ directories (Vitest/Jest style).
@@ -110,11 +143,10 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function scrollEntryIntoView(entry) {
-    const el = entry.toggle || entry;
     try {
-      el.scrollIntoView({ block: "center", behavior: "instant" });
+      entry.scrollIntoView({ block: "center", behavior: "instant" });
     } catch (e) {
-      try { el.scrollIntoView(); } catch (_) {}
+      try { entry.scrollIntoView(); } catch (_) {}
     }
   }
 
@@ -136,7 +168,7 @@
       await sleep(120); // let GitHub mount the row + hydrate its state
       if (isViewed(target) === false && setViewed(target, true)) {
         await sleep(250); // let the collapse re-render settle
-        return { ok: true, file: target.path };
+        return { ok: true, file: getFilePath(target) };
       }
     }
     return { ok: false, error: "could not view next file" };
@@ -154,7 +186,7 @@
       await sleep(120);
       if (isViewed(target) === true && setViewed(target, false)) {
         await sleep(250);
-        return { ok: true, file: target.path };
+        return { ok: true, file: getFilePath(target) };
       }
     }
     return { ok: false, error: "could not un-view last file" };
@@ -168,7 +200,7 @@
       const entries = getAllFileEntries();
       let target = null;
       for (const e of entries) {
-        if (isViewed(e) === false && (!predicate || predicate(e.path))) { target = e; break; }
+        if (isViewed(e) === false && (!predicate || predicate(getFilePath(e)))) { target = e; break; }
       }
       if (!target) break;
       scrollEntryIntoView(target);
@@ -191,7 +223,7 @@
     const entries = getAllFileEntries();
     let total = 0, unviewed = 0;
     for (const e of entries) {
-      if (isTestPath(e.path)) {
+      if (isTestPath(getFilePath(e))) {
         total++;
         if (isViewed(e) === false) unviewed++;
       }
@@ -312,7 +344,7 @@
         "border-radius:999px;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;" +
         "color:#fff;background:#238636;box-shadow:0 2px 8px rgba(0,0,0,.4);" +
         "display:none;align-items:center;gap:6px;pointer-events:none;";
-      badgeEl.textContent = "● Review mode — V view next · ⇧V un-view";
+      badgeEl.textContent = "● Review mode ON — V view next · ⇧V un-view";
       document.documentElement.appendChild(badgeEl);
     }
     badgeEl.style.display = state.mode ? "flex" : "none";
@@ -350,9 +382,6 @@
   }
 
   document.addEventListener("keydown", onKeyDown, true);
-
-  // Show the badge immediately if review mode is auto-enabled on this page.
-  ensureBadge();
 
   // ----- Feed copy shortcut: Cmd+Shift+F (any PR page) -------------------------
   // Matches chrome-feed. Works regardless of review mode and even while typing.
@@ -411,12 +440,9 @@
   });
 
   // ----- Auto-mark test files viewed on PR diff pages -----------------------
-  // GitHub virtualizes the diff list and hydrates rows on a timer, so we retry
-  // in short bursts until there are no more unviewed test files or we time out.
   async function autoMarkTestsViewed() {
     if (!PR_DIFF_RE.test(window.location.href)) return;
-    // Give GitHub a moment to mount the initial diff rows.
-    await sleep(800);
+    await sleep(800); // let GitHub mount the initial diff rows
     let totalMarked = 0;
     const deadline = Date.now() + 30000; // 30s cap
     while (Date.now() < deadline) {
@@ -425,17 +451,15 @@
       const r = await markAllTestsViewed();
       if (!r.ok) break;
       totalMarked += r.marked;
-      // If nothing changed this pass, the list is done (or stalled).
       const after = countTestFiles().unviewed;
-      if (after === before) break;
+      if (after === before) break; // no progress — done or stalled
       await sleep(400);
     }
-    if (totalMarked > 0) {
-      showToast(`Auto-marked ${totalMarked} test file(s) viewed`);
-    }
+    if (totalMarked > 0) showToast(`Auto-marked ${totalMarked} test file(s) viewed`);
   }
 
-  // Kick off auto-marking. Runs in the background; the user can still press V.
+  // Show the badge immediately if review mode is auto-enabled, then auto-mark.
+  ensureBadge();
   autoMarkTestsViewed();
 
   console.log("[AA GitHub Workflows] content script injected");
