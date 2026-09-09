@@ -1,123 +1,96 @@
 # AA GitHub Workflows
 
-A Chrome extension that makes reviewing GitHub Pull Requests faster. It combines two tools into one:
+A Chrome extension that makes GitHub PR review faster:
 
-1. **PR diff review** — quickly mark files as viewed so they collapse, one by one or in bulk.
-2. **PR feed entry** — copy a formatted Slack/chat feed entry for any PR to your clipboard.
+1. **PR diff review** — mark files as viewed (one by one or in bulk) so they collapse.
+2. **PR feed entry** — copy a formatted Slack/chat entry for any PR.
 
-Everything is driven from a clickable popup, plus two in-page keyboard shortcuts (V / Shift+V) while you're on the PR diff. On diff pages (`/files` or `/changes`), **review mode turns on automatically** and **all test files are marked as viewed on page load** — so you can just open a PR's changes and start reviewing.
-
----
+On diff pages (`/files` or `/changes`), review mode auto-enables and test files are marked viewed on load — open a PR's changes and start reviewing.
 
 ## Features
 
-### 1. View files in a PR diff
+### View files in a PR diff
 
-GitHub lets you flip each changed file to **"Viewed"**, which collapses its diff. That's the "I've already looked at this" marker. AA GitHub Workflows does it for you:
+GitHub's "Viewed" flag collapses a file's diff. This extension automates it:
 
-- **Auto on diff pages** — when you open or refresh a PR's `/files` or `/changes` tab, review mode enables itself and all test files are marked viewed automatically.
-- **View next file** — marks the top-most unviewed file as viewed (collapses it).
-- **Un-view last file** — un-views the most recently viewed file (the opposite of the above).
-- **Mark all test files viewed** — flips every test file to viewed in one click, leaving non-test files alone.
-- **Mark all files viewed** — flips every changed file to viewed in one click.
+- **Auto on diff pages** — review mode enables itself on `/files` or `/changes` and marks all test files viewed.
+- **View next file** — marks the top-most unviewed file as viewed.
+- **Un-view last file** — undoes the last view.
+- **Mark all test files viewed** / **Mark all files viewed** — bulk actions.
 
-#### In-page keyboard shortcuts (diff view only)
-
-While you're on the PR diff page (`/files` or `/changes`), the extension listens for plain keys:
+#### Keyboard shortcuts (diff view only)
 
 | Key | Action |
 | --- | ------ |
 | `V` | Mark the next unviewed file as viewed |
 | `Shift` + `V` | Un-view the last viewed file |
 
-Review mode is **auto-enabled** on diff pages, so V / ⇧V work immediately. On other PR tabs (conversation, commits), mode stays off so you can type freely. You can also toggle it manually from the popup.
+These are in-page only (no ⌘/Ctrl modifier, no global shortcuts). Review mode is auto-enabled on diff pages and stays off elsewhere so you can type freely. Toggle it manually from the popup if needed.
 
-These are intentionally **not** global shortcuts — they only fire while you're on the PR diff page and not typing in an input. No ⌘/Ctrl modifier is needed.
+### Test file detection
 
-### 2. Mark all test files viewed
+A changed file counts as a test file if its path matches a common test naming convention (case-insensitive):
 
-A "test file" is any changed file in the PR whose path matches a common test naming convention, case-insensitively:
+- Filename: `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `*-test.*`, `*-spec.*`
+- Directory: `tests/`, `test/`, `spec/`, `__tests__/`, `__test__/`, `__specs__/`
 
-- Filename patterns: `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `*-test.*`, `*-spec.*`
-- Directory patterns: `tests/`, `test/`, `spec/`, `__tests__/`, `__test__/`, `__specs__/`
+Examples: `src/utils/math.spec.ts`, `src/components/Button_test.tsx`, `tests/unit/math.test.js`
 
-Examples that count as tests:
-- `src/utils/math.spec.ts`
-- `src/components/Button_test.tsx`
-- `tests/unit/math.test.js`
-- `tests/unit/parse_test.py`
-- `tests/unit/util_spec.rb`
+### Copy a PR feed entry
 
-### 3. Copy a PR feed entry
-
-On any GitHub PR page, copy a formatted entry to your clipboard so you can paste it into Slack, Discord, or any chat. Press **Cmd+Shift+F** (or use the popup button) to copy. The format is two lines:
+On any PR page, press **Cmd+Shift+F** (or use the popup) to copy a two-line entry for Slack/Discord:
 
 ```
 :merged: Fix login bug #42
 https://github.com/owner/repo/pull/42
 ```
 
-- `:merged:` — the PR is merged
-- `:rev:` — the PR is open or closed (not merged)
-- The PR link is on its own second line.
-
----
+- `:merged:` — PR is merged; `:rev:` — open or closed.
 
 ## The popup
 
-Click the **AA GitHub Workflows** toolbar icon to open the popup. It shows live stats and one-click actions:
+Click the toolbar icon for live stats and one-click actions:
 
-- **View next** / **Un-view last** — the two most common review actions.
-- **Files / Tests / Unviewed** counts — how many files changed, how many are test files, and how many of those are still unviewed.
-- **Mark all files viewed** — bulk action for every changed file.
-- **Mark all test files viewed** — bulk action for just the test files.
-- **Copy PR feed entry** — grab the chat feed entry.
+- **View next** / **Un-view last** — common review actions.
+- **Files / Tests / Unviewed** counts.
+- **Mark all files viewed** / **Mark all test files viewed** — bulk actions.
+- **Copy PR feed entry**.
 
-The popup styles itself to match GitHub's light or dark theme automatically.
-
----
+The popup matches GitHub's light or dark theme automatically.
 
 ## What it does NOT do
 
-- It does **not** add any global Chrome keyboard shortcuts (so it never collides with Chrome, other extensions, or your OS). All key handling is in-page, scoped to GitHub PR pages: V / Shift+V on a PR diff, and Cmd+Shift+F on any PR page.
-- It does **not** approve or merge PRs — it only flips the "Viewed" marker and copies feed entries.
-
----
+- No global Chrome keyboard shortcuts — all key handling is in-page, scoped to GitHub PR pages (V / Shift+V on diffs, Cmd+Shift+F on any PR page).
+- No approve or merge — it only flips "Viewed" and copies feed entries.
 
 ## Install
 
-1. Open `chrome://extensions` in Chrome.
+1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top right).
-3. Click **Load unpacked** and select this folder (`chrome-extension-github-workflows`).
-
----
+3. Click **Load unpacked** and select this folder.
 
 ## Permissions
 
 - `activeTab` — run the content script on the active GitHub tab.
-- `scripting` — inject the content script if it isn't present yet (so the popup always works).
-- `clipboardWrite` — copy the PR feed entry to your clipboard.
+- `scripting` — inject the content script if needed (popup always works).
+- `clipboardWrite` — copy feed entries.
 - `storage` — reserved for settings.
-
----
 
 ## How it works
 
-- **`content.js`** runs on GitHub PR pages. It finds each changed file by its diff-entry container (modern React split view) or its classic `data-path` file header, locates the per-file "Mark as viewed" toggle, and toggles it. It also reads the PR title/state/number/URL to build the feed entry, and handles V / Shift+V.
-- **`background.js`** (service worker) routes popup actions to the active tab and auto-injects the content script when needed.
-- **`popup.html` / `popup.js`** provide the clickable UI and live stats.
+- **`content.js`** runs on GitHub PR pages: finds each changed file (modern split view or classic `data-path` header), toggles "Viewed", reads PR info for feed entries, and handles V / Shift+V.
+- **`background.js`** (service worker) routes popup actions to the active tab and auto-injects the content script.
+- **`popup.html` / `popup.js`** — clickable UI and live stats.
 
-The extension supports both GitHub diff layouts:
-- The newer **split view** (`/changes`), where the "Viewed" toggle is a button with `aria-pressed`.
-- The older **unified view** (`/files`), where each file has a `data-path` header.
-
----
+Supported layouts:
+- **Split view** (`/changes`) — "Viewed" is a button with `aria-pressed`.
+- **Unified view** (`/files`) — files have a `data-path` header.
 
 ## Troubleshooting
 
-- **V / Shift+V don't do anything** — review mode may be off. It auto-enables on `/files` and `/changes` pages; on other PR tabs it stays off. You can toggle it manually from the popup, or refresh the diff page to trigger auto-enable. Make sure you're not typing in a search box.
-- **"Are you signed in?"** — GitHub only shows the per-file "Viewed" toggle when you're signed in. Sign in to GitHub for the view/un-view actions to work.
-- **No file counts** — the popup needs the content script; it auto-injects on the active tab. Reload the PR page if counts stay at `–`.
+- **V / Shift+V don't work** — review mode may be off (other PR tabs stay off). Toggle it in the popup or refresh the diff page. Make sure you're not typing in a search box.
+- **"Are you signed in?"** — GitHub only shows the "Viewed" toggle when signed in.
+- **No file counts** — reload the PR page to trigger content-script injection.
 
 ## License
 
